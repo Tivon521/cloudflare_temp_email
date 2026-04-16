@@ -89,138 +89,138 @@ jobs:
           # Wrangler 当前 token 缺少 KV write 权限，因此部署后使用 Cloudflare API 自动补齐 KV 绑定
           if [ -n "$CF_GLOBAL_EMAIL" ] && [ -n "$CF_GLOBAL_KEY" ]; then
             node <<'NODE'
-const https = require('https');
+            const https = require('https');
 
-const email = process.env.CF_GLOBAL_EMAIL;
-const key = process.env.CF_GLOBAL_KEY;
-const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-const script = 'cloudflare_temp_email';
-const kvId = 'a480c7e04d4f4d458f51774155876456';
+            const email = process.env.CF_GLOBAL_EMAIL;
+            const key = process.env.CF_GLOBAL_KEY;
+            const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
+            const script = 'cloudflare_temp_email';
+            const kvId = 'a480c7e04d4f4d458f51774155876456';
 
-function api(path, method='GET', headers={}, body=null) {
-  return new Promise((resolve, reject) => {
-    const req = https.request({
-      hostname: 'api.cloudflare.com',
-      path,
-      method,
-      headers: {
-        'X-Auth-Email': email,
-        'X-Auth-Key': key,
-        ...headers,
-      },
-    }, (res) => {
-      const bufs = [];
-      res.on('data', d => bufs.push(d));
-      res.on('end', () => resolve({
-        status: res.statusCode,
-        headers: res.headers,
-        body: Buffer.concat(bufs),
-      }));
-    });
-    req.on('error', reject);
-    if (body) req.write(body);
-    req.end();
-  });
-}
+            function api(path, method='GET', headers={}, body=null) {
+              return new Promise((resolve, reject) => {
+                const req = https.request({
+                  hostname: 'api.cloudflare.com',
+                  path,
+                  method,
+                  headers: {
+                    'X-Auth-Email': email,
+                    'X-Auth-Key': key,
+                    ...headers,
+                  },
+                }, (res) => {
+                  const bufs = [];
+                  res.on('data', d => bufs.push(d));
+                  res.on('end', () => resolve({
+                    status: res.statusCode,
+                    headers: res.headers,
+                    body: Buffer.concat(bufs),
+                  }));
+                });
+                req.on('error', reject);
+                if (body) req.write(body);
+                req.end();
+              });
+            }
 
-function parseMultipart(body, contentType) {
-  const m = /boundary=([^;]+)/i.exec(contentType || '');
-  if (!m) throw new Error('No multipart boundary found');
-  const boundary = '--' + m[1];
-  const raw = body.toString('binary');
-  const chunks = raw.split(boundary).slice(1, -1);
-  return chunks.map((chunk) => {
-    let c = chunk;
-    if (c.startsWith('\r\n')) c = c.slice(2);
-    if (c.endsWith('\r\n')) c = c.slice(0, -2);
-    const idx = c.indexOf('\r\n\r\n');
-    const rawHeaders = c.slice(0, idx);
-    const contentBin = c.slice(idx + 4);
-    const headers = {};
-    for (const line of rawHeaders.split('\r\n')) {
-      const j = line.indexOf(':');
-      if (j > -1) headers[line.slice(0, j).toLowerCase()] = line.slice(j + 1).trim();
-    }
-    const cd = headers['content-disposition'] || '';
-    const nameMatch = /name="([^"]+)"/.exec(cd);
-    return {
-      name: nameMatch ? nameMatch[1] : null,
-      buf: Buffer.from(contentBin, 'binary'),
-    };
-  });
-}
+            function parseMultipart(body, contentType) {
+              const m = /boundary=([^;]+)/i.exec(contentType || '');
+              if (!m) throw new Error('No multipart boundary found');
+              const boundary = '--' + m[1];
+              const raw = body.toString('binary');
+              const chunks = raw.split(boundary).slice(1, -1);
+              return chunks.map((chunk) => {
+                let c = chunk;
+                if (c.startsWith('\r\n')) c = c.slice(2);
+                if (c.endsWith('\r\n')) c = c.slice(0, -2);
+                const idx = c.indexOf('\r\n\r\n');
+                const rawHeaders = c.slice(0, idx);
+                const contentBin = c.slice(idx + 4);
+                const headers = {};
+                for (const line of rawHeaders.split('\r\n')) {
+                  const j = line.indexOf(':');
+                  if (j > -1) headers[line.slice(0, j).toLowerCase()] = line.slice(j + 1).trim();
+                }
+                const cd = headers['content-disposition'] || '';
+                const nameMatch = /name="([^"]+)"/.exec(cd);
+                return {
+                  name: nameMatch ? nameMatch[1] : null,
+                  buf: Buffer.from(contentBin, 'binary'),
+                };
+              });
+            }
 
-function buildMultipart(parts) {
-  const boundary = '----openclaw' + Math.random().toString(16).slice(2);
-  const bufs = [];
-  for (const part of parts) {
-    bufs.push(Buffer.from(`--${boundary}\r\n`));
-    let header = `Content-Disposition: form-data; name="${part.name}"; filename="${part.filename || part.name.replace(/^\.\//,'')}"\r\n`;
-    if (part.contentType) header += `Content-Type: ${part.contentType}\r\n`;
-    header += `\r\n`;
-    bufs.push(Buffer.from(header));
-    bufs.push(part.data);
-    bufs.push(Buffer.from('\r\n'));
-  }
-  bufs.push(Buffer.from(`--${boundary}--\r\n`));
-  return { boundary, body: Buffer.concat(bufs) };
-}
+            function buildMultipart(parts) {
+              const boundary = '----openclaw' + Math.random().toString(16).slice(2);
+              const bufs = [];
+              for (const part of parts) {
+                bufs.push(Buffer.from(`--${boundary}\r\n`));
+                let header = `Content-Disposition: form-data; name="${part.name}"; filename="${part.filename || part.name.replace(/^\.\//,'')}"\r\n`;
+                if (part.contentType) header += `Content-Type: ${part.contentType}\r\n`;
+                header += `\r\n`;
+                bufs.push(Buffer.from(header));
+                bufs.push(part.data);
+                bufs.push(Buffer.from('\r\n'));
+              }
+              bufs.push(Buffer.from(`--${boundary}--\r\n`));
+              return { boundary, body: Buffer.concat(bufs) };
+            }
 
-(async () => {
-  const settingsRes = await api(`/client/v4/accounts/${accountId}/workers/scripts/${script}/settings`);
-  const settings = JSON.parse(settingsRes.body.toString('utf8'));
-  if (!settings.success) throw new Error(`Failed to fetch settings: ${settingsRes.body.toString('utf8')}`);
-  const hasKv = (settings.result?.bindings || []).some((b) => b.name === 'KV');
-  if (hasKv) {
-    console.log('KV binding already present, skipping patch');
-    process.exit(0);
-  }
+            (async () => {
+              const settingsRes = await api(`/client/v4/accounts/${accountId}/workers/scripts/${script}/settings`);
+              const settings = JSON.parse(settingsRes.body.toString('utf8'));
+              if (!settings.success) throw new Error(`Failed to fetch settings: ${settingsRes.body.toString('utf8')}`);
+              const hasKv = (settings.result?.bindings || []).some((b) => b.name === 'KV');
+              if (hasKv) {
+                console.log('KV binding already present, skipping patch');
+                process.exit(0);
+              }
 
-  const current = await api(`/client/v4/accounts/${accountId}/workers/scripts/${script}`);
-  if (current.status !== 200) throw new Error(`Failed to fetch current worker: ${current.status}`);
-  const files = parseMultipart(current.body, current.headers['content-type']);
+              const current = await api(`/client/v4/accounts/${accountId}/workers/scripts/${script}`);
+              if (current.status !== 200) throw new Error(`Failed to fetch current worker: ${current.status}`);
+              const files = parseMultipart(current.body, current.headers['content-type']);
 
-  const s = settings.result;
-  const bindings = [
-    ...(s.bindings || []).filter((b) => b.name !== 'KV'),
-    { type: 'kv_namespace', name: 'KV', namespace_id: kvId },
-  ];
+              const s = settings.result;
+              const bindings = [
+                ...(s.bindings || []).filter((b) => b.name !== 'KV'),
+                { type: 'kv_namespace', name: 'KV', namespace_id: kvId },
+              ];
 
-  const metadata = {
-    main_module: 'worker.js',
-    bindings,
-    compatibility_date: s.compatibility_date,
-    compatibility_flags: s.compatibility_flags || [],
-    usage_model: s.usage_model,
-    logpush: s.logpush || false,
-    tags: s.tags || [],
-    tail_consumers: s.tail_consumers || [],
-    placement: s.placement || {},
-  };
+              const metadata = {
+                main_module: 'worker.js',
+                bindings,
+                compatibility_date: s.compatibility_date,
+                compatibility_flags: s.compatibility_flags || [],
+                usage_model: s.usage_model,
+                logpush: s.logpush || false,
+                tags: s.tags || [],
+                tail_consumers: s.tail_consumers || [],
+                placement: s.placement || {},
+              };
 
-  const upload = buildMultipart([
-    { name: 'metadata', filename: 'metadata.json', contentType: 'application/json', data: Buffer.from(JSON.stringify(metadata), 'utf8') },
-    ...files.map((f) => ({
-      name: f.name,
-      filename: f.name.replace(/^\.\//,''),
-      contentType: f.name.endsWith('.wasm') ? 'application/wasm' : 'application/javascript+module',
-      data: f.buf,
-    })),
-  ]);
+              const upload = buildMultipart([
+                { name: 'metadata', filename: 'metadata.json', contentType: 'application/json', data: Buffer.from(JSON.stringify(metadata), 'utf8') },
+                ...files.map((f) => ({
+                  name: f.name,
+                  filename: f.name.replace(/^\.\//,''),
+                  contentType: f.name.endsWith('.wasm') ? 'application/wasm' : 'application/javascript+module',
+                  data: f.buf,
+                })),
+              ]);
 
-  const put = await api(`/client/v4/accounts/${accountId}/workers/scripts/${script}`, 'PUT', {
-    'Content-Type': `multipart/form-data; boundary=${upload.boundary}`,
-    'Content-Length': upload.body.length,
-  }, upload.body);
+              const put = await api(`/client/v4/accounts/${accountId}/workers/scripts/${script}`, 'PUT', {
+                'Content-Type': `multipart/form-data; boundary=${upload.boundary}`,
+                'Content-Length': upload.body.length,
+              }, upload.body);
 
-  const result = JSON.parse(put.body.toString('utf8'));
-  if (!result.success) throw new Error(`Failed to patch KV binding: ${put.body.toString('utf8')}`);
-  console.log('KV binding patched successfully');
-})().catch((err) => {
-  console.error(err.stack || String(err));
-  process.exit(1);
-});
-NODE
+              const result = JSON.parse(put.body.toString('utf8'));
+              if (!result.success) throw new Error(`Failed to patch KV binding: ${put.body.toString('utf8')}`);
+              console.log('KV binding patched successfully');
+            })().catch((err) => {
+              console.error(err.stack || String(err));
+              process.exit(1);
+            });
+            NODE
           else
             echo "CF_GLOBAL_EMAIL / CF_GLOBAL_KEY not set, skip KV patch"
           fi
