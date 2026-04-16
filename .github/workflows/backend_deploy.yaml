@@ -79,11 +79,14 @@ jobs:
           if [ "$debug_mode" = "true" ]; then
             pnpm run deploy
           else
-            if pnpm run deploy >/dev/null 2>&1; then
+            if pnpm run deploy; then
               echo "Deploy succeeded"
             else
               code=$?
               echo "Command failed with exit code $code"
+              echo "--- wrangler.toml (sanitized) ---"
+              sed -E '/JWT_SECRET|ADMIN_PASSWORDS|PASSWORDS|RESEND_TOKEN|CLOUDFLARE_API_TOKEN|BOT_TOKEN|SECRET|TOKEN/d' wrangler.toml || true
+              echo "--- end wrangler.toml ---"
               exit "$code"
             fi
           fi
